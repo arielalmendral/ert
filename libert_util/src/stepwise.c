@@ -7,7 +7,7 @@
 #include <ert/util/stepwise.h>
 #include <ert/util/bool_vector.h>
 #include <ert/util/double_vector.h>
-
+#include <math.h>
 
 
 #define STEPWISE_TYPE_ID 8722106
@@ -135,9 +135,7 @@ static double stepwise_eval__( const stepwise_type * stepwise , const matrix_typ
   return matrix_row_column_dot_product( x , 0 , stepwise->beta , 0 );
 }
 
-
-
-static double stepwise_test_var( stepwise_type * stepwise , int test_var , int blocks, bool cross_validation) {
+static double stepwise_test_var( stepwise_type * stepwise , int test_var , int blocks) {
   double prediction_error = 0;
 
   bool_vector_iset( stepwise->active_set , test_var , true );   // Temporarily activate this variable
@@ -149,96 +147,109 @@ static double stepwise_test_var( stepwise_type * stepwise , int test_var , int b
     bool_vector_type * active_rows = bool_vector_alloc( nsample, true );
 
 
-    if (cross_validation){
-
-      /*True Cross-Validation: */
-      int * randperms     = util_calloc( nsample , sizeof * randperms );
-      for (int i=0; i < nsample; i++)
-        randperms[i] = i;
-
-      /* Randomly perturb ensemble indices */
-      rng_shuffle_int( stepwise->rng , randperms , nsample );
-
-
-      for (int iblock = 0; iblock < blocks; iblock++) {
-
-        int validation_start = iblock * block_size;
-        int validation_end   = validation_start + block_size - 1;
-
-        if (iblock == (blocks - 1))
-          validation_end = nsample - 1;
-
-        /*
-          Ensure that the active_rows vector has a block consisting of
-          the interval [validation_start : validation_end] which is set to
-          false, and the remaining part of the vector is set to true.
-        */
-        {
-          bool_vector_set_all(active_rows, true);
-          /*
-            If blocks == 1 that means all datapoint are used in the
-            regression, and then subsequently reused in the R2
-            calculation.
-          */
-          if (blocks > 1) {
-            for (int i = validation_start; i <= validation_end; i++) {
-              bool_vector_iset( active_rows , randperms[i] , false );
-            }
-          }
-        }
-
-
-        /*
-          Evaluate the prediction error on the validation part of the
-          dataset.
-        */
-        {
-          stepwise_estimate__( stepwise , active_rows );
-          {
-            int irow;
-            matrix_type * x_vector = matrix_alloc( 1 , nvar );
-            for (irow=validation_start; irow <= validation_end; irow++) {
-              matrix_copy_row( x_vector , stepwise->X0 , 0 , randperms[irow]);
-              {
-                double true_value      = matrix_iget( stepwise->Y0 , randperms[irow] , 0 );
-                double estimated_value = stepwise_eval__( stepwise , x_vector );
-                prediction_error += (true_value - estimated_value) * (true_value - estimated_value);
-              }
-
-            }
-            matrix_free( x_vector );
-          }
-        }
-      }
-
-      free( randperms );
-      bool_vector_free( active_rows );
-    }
-    else{ /* No cross-validation (faster but sloppy) */
-      stepwise_estimate__( stepwise , active_rows );
+    /*True Cross-Validation: */
+    int * randperms     = util_calloc( nsample , sizeof * randperms );
+    for (int i=0; i < nsample; i++)
+      randperms[i] = i;
+    
+    /* Randomly perturb ensemble indices */
+    rng_shuffle_int( stepwise->rng , randperms , nsample );
+    
+    
+    for (int iblock = 0; iblock < blocks; iblock++) {
+      
+      int validation_start = iblock * block_size;
+      int validation_end   = validation_start + block_size - 1;
+      
+      if (iblock == (blocks - 1))
+        validation_end = nsample - 1;
+      
+      /*
+        Ensure that the active_rows vector has a block consisting of
+        the interval [validation_start : validation_end] which is set to
+        false, and the remaining part of the vector is set to true.
+      */
       {
-        int irow;
-        matrix_type * x_vector = matrix_alloc( 1 , nvar );
-        for (irow=0; irow < nsample; irow++) {
-          matrix_copy_row( x_vector , stepwise->X0 , 0 , irow);
-          {
-            double true_value      = matrix_iget( stepwise->Y0 , irow , 0 );
-            double estimated_value = stepwise_eval__( stepwise , x_vector );
-            prediction_error += (true_value - estimated_value) * (true_value - estimated_value);
+        bool_vector_set_all(active_rows, true);
+        /*
+          If blocks == 1 that means all datapoint are used in the
+          regression, and then subsequently reused in the R2
+          calculation.
+        */
+        if (blocks > 1) {
+          for (int i = validation_start; i <= validation_end; i++) {
+            bool_vector_iset( active_rows , randperms[i] , false );
           }
-
         }
-        matrix_free( x_vector );
+      }
+      
+      
+      /*
+        Evaluate the prediction error on the validation part of the
+        dataset.
+        */
+      {
+        stepwise_estimate__( stepwise , active_rows );
+        {
+          int irow;
+          matrix_type * x_vector = matrix_alloc( 1 , nvar );
+          for (irow=validation_start; irow <= validation_end; irow++) {
+            matrix_copy_row( x_vector , stepwise->X0 , 0 , randperms[irow]);
+            {
+              double true_value      = matrix_iget( stepwise->Y0 , randperms[irow] , 0 );
+              double estimated_value = stepwise_eval__( stepwise , x_vector );
+              prediction_error += (true_value - estimated_value) * (true_value - estimated_value);
+            }
+            
+          }
+          matrix_free( x_vector );
+        }
       }
     }
+    
+    free( randperms );
+    bool_vector_free( active_rows );
+    
   }
-
-
+  
+  
   /*inactivate the test_var-variable after completion*/
   bool_vector_iset( stepwise->active_set , test_var , false );
   return prediction_error;
 }
 
+static double stepwise_test_var_no_cv( stepwise_type * stepwise , int test_var) {
+  double invr2 = 0;
+  bool_vector_iset( stepwise->active_set , test_var , true );   // Temporarily activate this variable
+  int nvar                       = matrix_get_columns( stepwise->X0 );
+  int nsample                    = matrix_get_rows( stepwise->X0 );
+  bool_vector_type * active_rows = bool_vector_alloc( nsample, true );
+  double ssm = 0.0;
+  double sst = 0.0;
+  double r2 = 0.0;
+  stepwise_estimate__( stepwise , active_rows );
+  {
+    int irow;
+    matrix_type * x_vector = matrix_alloc( 1 , nvar );
+    double ym = matrix_get_row_sum(stepwise->Y0, 0)/nsample;
+    for (irow=0; irow < nsample; irow++) {
+      matrix_copy_row( x_vector , stepwise->X0 , 0 , irow);
+      {
+        double yi     = matrix_iget( stepwise->Y0 , irow , 0 );
+        double yihat  = stepwise_eval__( stepwise , x_vector );
+        ssm += (yi - ym) * (yi - ym);
+        sst += ssm + (yi - yihat) * (yi - yihat);
+      }
+    }
+    matrix_free( x_vector );
+    r2 = ssm/sst;
+  }
+  invr2 =  1.0/r2;
+
+  /*inactivate the test_var-variable after completion*/
+  bool_vector_iset( stepwise->active_set , test_var , false );
+  return invr2;
+}
 
 void stepwise_estimate( stepwise_type * stepwise , double deltaR2_limit , int CV_blocks, bool cross_validation) {
   int nvar          = matrix_get_columns( stepwise->X0 );
@@ -271,7 +282,11 @@ void stepwise_estimate( stepwise_type * stepwise , double deltaR2_limit , int CV
     */
     for (int ivar = 0; ivar < nvar; ivar++) {
       if (!bool_vector_iget( stepwise->active_set , ivar)) {
-        double newR2 = stepwise_test_var(stepwise , ivar , CV_blocks, cross_validation);
+        double newR2;
+        if (cross_validation)
+          newR2 = stepwise_test_var(stepwise , ivar , CV_blocks);
+        else
+          newR2 = stepwise_test_var_no_cv(stepwise , ivar);
         if ((minR2 < 0) || (newR2 < minR2)) {
           minR2 = newR2;
           best_var = ivar;
@@ -467,4 +482,5 @@ void stepwise_free( stepwise_type * stepwise ) {
 
   free( stepwise );
 }
+
 
