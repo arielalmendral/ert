@@ -8,7 +8,7 @@
 #include <ert/util/bool_vector.h>
 #include <ert/util/double_vector.h>
 
-
+#include <math.h>
 
 #define STEPWISE_TYPE_ID 8722106
 
@@ -27,6 +27,7 @@ struct stepwise_struct {
   bool_vector_type * active_set;
   rng_type         * rng;           // Needed in the cross-validation
   double             R2;            // Final R2
+
 };
 
 
@@ -138,8 +139,11 @@ static double stepwise_eval__( const stepwise_type * stepwise , const matrix_typ
 
 
 
-static double stepwise_test_var( stepwise_type * stepwise , int test_var , int blocks) {
+static double stepwise_test_var( stepwise_type * stepwise , int test_var , int blocks, double * prediction_error_var) { // added prediction_error_var
   double prediction_error = 0;
+  double Ri_sq_sum               = 0.0; // NBNB added
+  double Ri_sum                  = 0.0; // NBNB added
+
 
   bool_vector_iset( stepwise->active_set , test_var , true );   // Temporarily activate this variable
   {
@@ -162,8 +166,8 @@ static double stepwise_test_var( stepwise_type * stepwise , int test_var , int b
     rng_shuffle_int( stepwise->rng , randperms , nsample );
 
 
-    for (int iblock = 0; iblock < blocks; iblock++) {
-
+    for (int iblock = 0; iblock < blocks; iblock++) {  // blocks = K (K-fold validation)
+      double Ri_individual = 0.0;
       int validation_start = iblock * block_size;
       int validation_end   = validation_start + block_size - 1;
 
@@ -207,6 +211,7 @@ static double stepwise_test_var( stepwise_type * stepwise , int test_var , int b
               double true_value      = matrix_iget( stepwise->Y0 , randperms[irow] , 0 );
               double estimated_value = stepwise_eval__( stepwise , x_vector );
               prediction_error += (true_value - estimated_value) * (true_value - estimated_value);
+              Ri_individual += (true_value - estimated_value) * (true_value - estimated_value); // NBNB added
               //double e_estimated_value = stepwise_eval__( stepwise , e_vector );
               //prediction_error += e_estimated_value*e_estimated_value;
             }
@@ -215,11 +220,18 @@ static double stepwise_test_var( stepwise_type * stepwise , int test_var , int b
           matrix_free( x_vector );
         }
       }
+      Ri_sq_sum += Ri_individual * Ri_individual; // NBNB added
+      Ri_sum    += Ri_individual;
     }
+
+
 
     free( randperms );
     bool_vector_free( active_rows );
   }
+
+
+  *prediction_error_var = sqrt(1.0/(blocks -1)*(Ri_sq_sum - Ri_sum*Ri_sum/blocks))/sqrt(blocks); // NBNB added /sqrt(blocks)
 
   /*inactivate the test_var-variable after completion*/
   bool_vector_iset( stepwise->active_set , test_var , false );
@@ -232,6 +244,12 @@ void stepwise_estimate( stepwise_type * stepwise , double deltaR2_limit , int CV
   int nsample       = matrix_get_rows( stepwise->X0 );
   double currentR2 = -1;
   bool_vector_type * active_rows = bool_vector_alloc( nsample , true );
+
+  double R2_attached[nvar]; // NBNB added
+  int    obs_index[nvar];
+  int index = 0;
+  double prediction_error_var = 0;
+  double prediction_error_var_final = 0;
 
 
   /*Reset beta*/
@@ -250,7 +268,7 @@ void stepwise_estimate( stepwise_type * stepwise , double deltaR2_limit , int CV
   while (true) {
     int    best_var = 0;
     Prev_MSE_min = MSE_min;
-
+    double prediction_error_var_temp = 0; // NBNB added
     /*
       Go through all the inactive variables, and calculate the
       resulting prediction error IF this particular variable is added;
@@ -258,10 +276,12 @@ void stepwise_estimate( stepwise_type * stepwise , double deltaR2_limit , int CV
     */
     for (int ivar = 0; ivar < nvar; ivar++) {
       if (!bool_vector_iget( stepwise->active_set , ivar)) {
-        double newR2 = stepwise_test_var(stepwise , ivar , CV_blocks);
+
+        double newR2 = stepwise_test_var(stepwise , ivar , CV_blocks, &prediction_error_var_temp);
         if ((minR2 < 0) || (newR2 < minR2)) {
           minR2 = newR2;
           best_var = ivar;
+          prediction_error_var = prediction_error_var_temp; // NBNB added
         }
       }
     }
@@ -282,12 +302,39 @@ void stepwise_estimate( stepwise_type * stepwise , double deltaR2_limit , int CV
         currentR2 = minR2;
         bool_vector_set_all(active_rows, true);
         stepwise_estimate__( stepwise , active_rows );
+        // store here variance of Ri,
+        R2_attached[index] = currentR2; // NBNB added
+        obs_index[index] = best_var;
+        index++;
+        prediction_error_var_final = prediction_error_var;
+
+
+
+
+        FILE *f = fopen("r2_test.txt", "a"); // NBNB added
+        fprintf(f, "%f ", MSE_min);
+        fclose(f);
+
+
+
       } else {
         /* The gain in prediction error is so small that we just leave the building. */
         /* NB! Need one final compuation of beta (since the test_var function does not reset the last tested beta value !) */
         bool_vector_set_all(active_rows, true);
         stepwise_estimate__( stepwise , active_rows );
+
+
+        FILE *f = fopen("r2_test.txt", "a"); // NBNB added
+        fprintf(f, "\n");
+        fclose(f);
+
+        FILE *fvar = fopen("r2_variance.txt", "a"); // NBNB added
+        fprintf(fvar, "%f \n", prediction_error_var_final);
+        fclose(fvar);
+
         break;
+
+
       }
 
       if (bool_vector_count_equal( stepwise->active_set , true) == matrix_get_columns( stepwise->X0 )) {
@@ -297,7 +344,35 @@ void stepwise_estimate( stepwise_type * stepwise , double deltaR2_limit , int CV
     }
   }
 
-  stepwise_set_R2(stepwise, currentR2);
+    // loop through attached observations and check if their R falls into the band if yes - cut
+  /* comment the following section if not using one standard error rule */
+  int last_attached_index = index-1;
+  if (bool_vector_count_equal( stepwise->active_set , true) > 1){ // NBNB added
+    bool check = false;
+    int i = index -2;
+    while(R2_attached[i] < R2_attached[index-1] + prediction_error_var && i >= 0){
+      check = true;
+      bool_vector_iset(stepwise->active_set, obs_index[i], false);
+      i -= 1;
+      last_attached_index = i; // previous to the removed in this iteration
+    }
+    if (check == true){
+      bool_vector_iset(stepwise->active_set, obs_index[index-1], false); // if some observation were detached -> the last one is detached too
+    }
+  }
+
+  if (bool_vector_count_equal( stepwise->active_set , true) == 0){
+    bool_vector_iset(stepwise->active_set, obs_index[0], true);
+    last_attached_index = 0; //set to the first attached
+  }
+
+  bool_vector_set_all(active_rows, true); // reestimate
+  stepwise_estimate__( stepwise , active_rows );
+  /* end of the section */
+
+
+  stepwise_set_R2(stepwise, currentR2); // change to the last R2 included
+  stepwise_set_R2(stepwise, R2_attached[last_attached_index]);
   bool_vector_free( active_rows );
 }
 

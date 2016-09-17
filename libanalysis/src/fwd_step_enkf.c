@@ -250,8 +250,17 @@ void fwd_step_enkf_updateA(void * module_data ,
     bool verbose    = fwd_step_data->verbose;
     int num_kw     =  module_data_block_vector_get_size(data_block_vector);
 
+    // NBNB added
+    FILE *f = fopen("r2_test.txt", "w");
+    fclose(f);
 
-    if ( ens_size <= nfolds)
+    FILE *fvar = fopen("r2_variance.txt", "w");
+    fclose(fvar);
+
+    // NBNB end
+
+
+    if ( ens_size < nfolds)
       util_abort("%s: The number of ensembles must be larger than the CV fold - aborting\n", __func__);
 
 
@@ -301,6 +310,9 @@ void fwd_step_enkf_updateA(void * module_data ,
           stepwise_set_Y0( stepwise_data , y );
 
           stepwise_estimate(stepwise_data , r2_limit , nfolds );
+
+
+
 
           /*manipulate A directly*/
           for (int j = 0; j < ens_size; j++) {
