@@ -258,10 +258,11 @@ void analysis_module_initX(analysis_module_type * module ,
                            matrix_type * R ,
                            matrix_type * dObs ,
                            matrix_type * E ,
-                           matrix_type * D ) {
+                           matrix_type * D ,
+                           const module_info_type* module_info) {
 
 
-  module->initX(module->module_data , X , A , S , R , dObs , E , D );
+  module->initX(module->module_data , X , A , S , R , dObs , E , D, module_info);
 }
 
 

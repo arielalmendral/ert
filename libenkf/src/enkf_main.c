@@ -891,7 +891,7 @@ static module_info_type * enkf_main_module_info_alloc( const local_ministep_type
   // Create and initialize the module_info instance.
   module_info_type * module_info = module_info_alloc(local_ministep_get_name(ministep));
 
-  { /* Init data blocks in module_info */
+  if (dataset != NULL){ /* Init data blocks in module_info */
     stringlist_type * update_keys = local_dataset_alloc_keys( dataset );
     const int num_kw  = stringlist_get_size( update_keys );
     module_data_block_vector_type * module_data_block_vector = module_info_get_data_block_vector(module_info);
@@ -1008,6 +1008,7 @@ static void enkf_main_analysis_update( enkf_main_type * enkf_main ,
   matrix_type * D       = NULL;
   matrix_type * localA  = NULL;
   int_vector_type * iens_active_index = bool_vector_alloc_active_index_list(ens_mask , -1);
+  local_obsdata_type   * local_obsdata = local_ministep_get_obsdata( ministep );
 
   analysis_module_type * module = analysis_config_get_active_module( enkf_main->analysis_config );
   if ( local_ministep_has_analysis_module (ministep))
@@ -1073,8 +1074,11 @@ static void enkf_main_analysis_update( enkf_main_type * enkf_main ,
       double_vector_free( singular_values );
     }
 
-    if (localA == NULL)
-      analysis_module_initX( module , X , NULL , S , R , dObs , E , D );
+    if (localA == NULL){
+      module_info_type * module_info = enkf_main_module_info_alloc(ministep, obs_data, NULL, local_obsdata, NULL , NULL);
+      analysis_module_initX( module , X , NULL , S , R , dObs , E , D, module_info );
+      enkf_main_module_info_free( module_info );
+    }
 
 
     while (!hash_iter_is_complete( dataset_iter )) {
@@ -1083,7 +1087,7 @@ static void enkf_main_analysis_update( enkf_main_type * enkf_main ,
       if (local_dataset_get_size( dataset )) {
         int * active_size = util_calloc( local_dataset_get_size( dataset ) , sizeof * active_size );
         int * row_offset  = util_calloc( local_dataset_get_size( dataset ) , sizeof * row_offset  );
-        local_obsdata_type   * local_obsdata = local_ministep_get_obsdata( ministep );
+
 
         enkf_main_serialize_dataset( enkf_main->ensemble_config , dataset , step2 ,  use_count , active_size , row_offset , tp , serialize_info);
         module_info_type * module_info = enkf_main_module_info_alloc(ministep, obs_data, dataset, local_obsdata, active_size , row_offset);
@@ -1097,7 +1101,7 @@ static void enkf_main_analysis_update( enkf_main_type * enkf_main ,
         }
         else {
           if (analysis_module_check_option( module , ANALYSIS_USE_A)){
-            analysis_module_initX( module , X , localA , S , R , dObs , E , D );
+            analysis_module_initX( module , X , localA , S , R , dObs , E , D, module_info );
           }
 
           matrix_inplace_matmul_mt2( A , X , tp );
@@ -1151,7 +1155,7 @@ static FILE * enkf_main_log_step_list(enkf_main_type * enkf_main, const int_vect
  * This is THE ENKF update function.  It should only be called from enkf_main_UPDATE.
  */
 static void enkf_main_update__(enkf_main_type * enkf_main, const int_vector_type * step_list, enkf_fs_type * source_fs,
-        enkf_fs_type * target_fs, int target_step, run_mode_type run_mode, 
+        enkf_fs_type * target_fs, int target_step, run_mode_type run_mode,
         const analysis_config_type * analysis_config, const local_updatestep_type * updatestep,
         const int total_ens_size)
 {
@@ -1166,7 +1170,7 @@ static void enkf_main_update__(enkf_main_type * enkf_main, const int_vector_type
   */
   bool_vector_type * ens_mask = bool_vector_alloc(total_ens_size, false);
   state_map_type * source_state_map = enkf_fs_get_state_map( source_fs );
-  
+
   state_map_select_matching(source_state_map, ens_mask, STATE_HAS_DATA);
   {
     FILE * log_stream = enkf_main_log_step_list(enkf_main, step_list);
@@ -1174,8 +1178,8 @@ static void enkf_main_update__(enkf_main_type * enkf_main, const int_vector_type
     meas_data_type * meas_data = meas_data_alloc(ens_mask);
     obs_data_type * obs_data = obs_data_alloc(global_std_scaling);
     int_vector_type * ens_active_list = bool_vector_alloc_active_list(ens_mask);
-    
-    /* 
+
+    /*
        Copy all the parameter nodes from source case to target case;
        nodes which are updated will be fetched from the new target
        case, and nodes which are not updated will be manually copied
@@ -1196,44 +1200,44 @@ static void enkf_main_update__(enkf_main_type * enkf_main, const int_vector_type
       }
       stringlist_free(param_keys);
     }
-    
+
     {
       hash_type * use_count = hash_alloc();
       int current_step = int_vector_get_last(step_list);
 
-      
+
       /* Looping over local analysis ministep */
       for (int ministep_nr = 0; ministep_nr < local_updatestep_get_num_ministep(updatestep); ministep_nr++) {
 	local_ministep_type * ministep = local_updatestep_iget_ministep(updatestep, ministep_nr);
 	local_obsdata_type * obsdata = local_ministep_get_obsdata(ministep);
-      
+
 	obs_data_reset(obs_data);
 	meas_data_reset(meas_data);
-	
+
 	/*
 	  Temporarily we will just force the timestep from the input
 	  argument onto the obsdata instance; in the future the
 	  obsdata should hold it's own here.
 	*/
 	local_obsdata_reset_tstep_list(obsdata, step_list);
-      
+
 	if (analysis_config_get_std_scale_correlated_obs(enkf_main->analysis_config)) {
 	  double scale_factor = enkf_obs_scale_correlated_std(enkf_main->obs, source_fs, ens_active_list, obsdata);
 	  ert_log_add_fmt_message(1, NULL, "Scaling standard deviation in obdsata set:%s with %g",
 				  local_obsdata_get_name(obsdata), scale_factor);
 	}
 	enkf_obs_get_obs_and_measure_data(enkf_main->obs, source_fs, obsdata, ens_active_list, meas_data, obs_data);
-      
-      
-      
+
+
+
 	double alpha = analysis_config_get_alpha(enkf_main->analysis_config);
 	double std_cutoff = analysis_config_get_std_cutoff(enkf_main->analysis_config);
 	enkf_analysis_deactivate_outliers(obs_data, meas_data, std_cutoff, alpha, enkf_main->verbose);
-      
+
 	if (enkf_main->verbose)
 	  enkf_analysis_fprintf_obs_summary(obs_data, meas_data, step_list, local_ministep_get_name(ministep), stdout);
 	enkf_analysis_fprintf_obs_summary(obs_data, meas_data, step_list, local_ministep_get_name(ministep), log_stream);
-	
+
 	if ((obs_data_get_active_size(obs_data) > 0) && (meas_data_get_active_obs_size(meas_data) > 0))
 	  enkf_main_analysis_update(enkf_main,
 				    target_fs,
@@ -1258,7 +1262,7 @@ static void enkf_main_update__(enkf_main_type * enkf_main, const int_vector_type
 
     {
       state_map_type * target_state_map = enkf_fs_get_state_map(target_fs);
-    
+
       if (target_state_map != source_state_map) {
 	state_map_set_from_inverted_mask(target_state_map, ens_mask, STATE_PARENT_FAILURE);
 	state_map_set_from_mask(target_state_map, ens_mask, STATE_INITIALIZED);
@@ -1367,7 +1371,7 @@ static void enkf_main_monitor_job_queue ( const enkf_main_type * enkf_main) {
         job_queue_get_num_pending(job_queue) +
         job_queue_get_num_complete(job_queue);
 
-      
+
       if (analysis_config_have_enough_realisations(analysis_config, possible_successes, enkf_main_get_ensemble_size(enkf_main))) {
         cont = false;
       }
@@ -1627,7 +1631,7 @@ static int enkf_main_run_step(enkf_main_type * enkf_main       ,
         }
       }
     }
-    
+
     enkf_fs_fsync( ert_run_context_get_result_fs( run_context ) );
     if (totalFailed == 0)
       ert_log_add_fmt_message( 1 , NULL , "All jobs complete and data loaded.");
@@ -1722,7 +1726,7 @@ void enkf_main_run_tui_exp(enkf_main_type * enkf_main ,
   enkf_main_create_run_path( enkf_main , iactive , iter );
   hook_manager_run_workflows(hook_manager, PRE_SIMULATION, enkf_main);
   enkf_main_run_step(enkf_main , run_context);
-  
+
   int active_after = bool_vector_count_equal(iactive, true);
   if (active_after == active_before)
     hook_manager_run_workflows(hook_manager, POST_SIMULATION, enkf_main);
@@ -2654,7 +2658,7 @@ enkf_main_type * enkf_main_bootstrap(const char * _model_config, bool strict , b
             fprintf(stderr, " %02d : %s \n",i , stringlist_iget( warnings , i ));
         }
       }
-      
+
       if (!config_content_is_valid( content )) {
 	config_error_type * errors = config_content_get_errors( content );
 	config_error_fprintf( errors , true , stderr );

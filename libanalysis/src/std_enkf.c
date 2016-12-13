@@ -25,6 +25,7 @@
 #include <ert/util/matrix_blas.h>
 #include <ert/util/rng.h>
 
+#include <ert/analysis/std_enkf_log.h>
 #include <ert/analysis/analysis_module.h>
 #include <ert/analysis/analysis_table.h>
 #include <ert/analysis/enkf_linalg.h>
@@ -54,7 +55,8 @@
 #define DEFAULT_USE_EE              false
 #define DEFAULT_USE_GE              false
 #define DEFAULT_ANALYSIS_SCALE_DATA true
-
+#define LOG_FILE_KEY                "LOG_FILE"
+#define CLEAR_LOG_KEY               "CLEAR_LOG"
 
 
 
@@ -89,6 +91,7 @@ struct std_enkf_data_struct {
   bool      use_EE;
   bool      use_GE;
   bool      analysis_scale_data;
+  std_enkf_log_type * std_enkf_log;
 };
 
 static UTIL_SAFE_CAST_FUNCTION_CONST( std_enkf_data , STD_ENKF_TYPE_ID )
@@ -137,6 +140,7 @@ void * std_enkf_data_alloc( rng_type * rng) {
   data->use_EE = DEFAULT_USE_EE;
   data->use_GE = DEFAULT_USE_GE;
   data->analysis_scale_data = DEFAULT_ANALYSIS_SCALE_DATA;
+  data->std_enkf_log = std_enkf_log_alloc();
   return data;
 }
 
@@ -146,6 +150,29 @@ void std_enkf_data_free( void * data ) {
 }
 
 
+
+static void std_enkf_write_info( std_enkf_data_type * std_enkf_data, const char * ministep_name, const int nrobs, const int ens_size, const int ncomp, const double truncation, const double* eig) {
+
+  int nrmin         = util_int_min( ens_size , nrobs);
+  if (std_enkf_log_is_open( std_enkf_data->std_enkf_log )) {
+    std_enkf_log_line(std_enkf_data->std_enkf_log, "===============================================================================================================================\n");
+    std_enkf_log_line(std_enkf_data->std_enkf_log, "Ministep                    : %s\n",ministep_name);
+    std_enkf_log_line(std_enkf_data->std_enkf_log, "Total number of observations: %d\n",nrobs);
+    std_enkf_log_line(std_enkf_data->std_enkf_log, "Number of ensembles         : %d\n",ens_size);
+    std_enkf_log_line(std_enkf_data->std_enkf_log, "Number of components        : %d\n",ncomp);
+    std_enkf_log_line(std_enkf_data->std_enkf_log, "Truncation                  : %f\n",truncation);
+    std_enkf_log_line(std_enkf_data->std_enkf_log, "===============================================================================================================================\n");
+    std_enkf_log_line(std_enkf_data->std_enkf_log, "Eigenvalues :\n");
+  }
+
+  printf("===============================================================================================================================\n");
+  printf("Ministep                    : %s\n",ministep_name);
+  printf("Total number of observations: %d\n",nrobs);
+  printf("Number of ensembles         : %d\n",ens_size);
+  printf("Number of components        : %d\n",ncomp);
+  printf("Truncation                  : %f\n",truncation);
+  printf("===============================================================================================================================\n");
+}
 
 
 static void std_enkf_initX__( matrix_type * X ,
@@ -157,7 +184,12 @@ static void std_enkf_initX__( matrix_type * X ,
                               int    ncomp,
                               bool   bootstrap ,
                               bool   use_EE ,
-                              bool   use_GE) {
+                              bool   use_GE ,
+                              void * module_data ,
+                              const  module_info_type* module_info) {
+
+  std_enkf_data_type * std_enkf_data = std_enkf_data_safe_cast( module_data );
+  std_enkf_log_open(std_enkf_data->std_enkf_log);
 
   int nrobs         = matrix_get_rows( S );
   int ens_size      = matrix_get_columns( S );
@@ -190,6 +222,11 @@ static void std_enkf_initX__( matrix_type * X ,
 
   enkf_linalg_init_stdX( X , S , D , W , eig , bootstrap);
 
+  if (module_info != NULL){
+    char * ministep_name = module_info_get_ministep_name(module_info);
+    std_enkf_write_info(std_enkf_data, ministep_name, nrobs, ens_size, ncomp, truncation, eig);
+  }
+
   matrix_free( W );
   free( eig );
   enkf_linalg_checkX( X , bootstrap );
@@ -206,7 +243,8 @@ void std_enkf_initX(void * module_data ,
                     matrix_type * R ,
                     matrix_type * dObs ,
                     matrix_type * E ,
-                    matrix_type * D) {
+                    matrix_type * D ,
+                    const module_info_type* module_info) {
 
 
   std_enkf_data_type * data = std_enkf_data_safe_cast( module_data );
@@ -214,7 +252,7 @@ void std_enkf_initX(void * module_data ,
     int ncomp         = data->subspace_dimension;
     double truncation = data->truncation;
 
-    std_enkf_initX__(X,S,R,E,D,truncation,ncomp,false,data->use_EE,data->use_GE);
+    std_enkf_initX__(X,S,R,E,D,truncation,ncomp,false,data->use_EE,data->use_GE, module_data, module_info);
   }
 }
 
@@ -265,6 +303,8 @@ bool std_enkf_set_bool( void * arg , const char * var_name , bool value) {
       module_data->use_GE = value;
     else if (strcmp( var_name , ANALYSIS_SCALE_DATA_KEY_) == 0)
       module_data->analysis_scale_data = value;
+    else if (strcmp( var_name , CLEAR_LOG_KEY) == 0)
+      std_enkf_log_set_clear_log( module_data->std_enkf_log , value );
     else
       name_recognized = false;
 
@@ -272,7 +312,19 @@ bool std_enkf_set_bool( void * arg , const char * var_name , bool value) {
   }
 }
 
+bool std_enkf_set_string( void * arg , const char * var_name , const char * value) {
+  std_enkf_data_type * module_data = std_enkf_data_safe_cast( arg );
+  {
+    bool name_recognized = true;
 
+    if (strcmp( var_name , LOG_FILE_KEY) == 0)
+      std_enkf_log_set_log_file( module_data->std_enkf_log , value );
+    else
+      name_recognized = false;
+
+    return name_recognized;
+  }
+}
 
 long std_enkf_get_options( void * arg , long flag ) {
   std_enkf_data_type * module_data = std_enkf_data_safe_cast( arg );
@@ -291,6 +343,10 @@ bool std_enkf_has_var( const void * arg, const char * var_name) {
     else if (strcmp(var_name , USE_GE_KEY_) == 0)
       return true;
     else if (strcmp(var_name , ANALYSIS_SCALE_DATA_KEY_) == 0)
+      return true;
+    else if (strcmp(var_name , LOG_FILE_KEY) == 0)
+      return true;
+    else if (strcmp(var_name , CLEAR_LOG_KEY) == 0)
       return true;
     else
       return false;
@@ -327,10 +383,23 @@ bool std_enkf_get_bool( const void * arg, const char * var_name) {
       return module_data->use_GE;
     else if (strcmp(var_name , ANALYSIS_SCALE_DATA_KEY_) == 0)
       return module_data->analysis_scale_data;
+    else if (strcmp(var_name , CLEAR_LOG_KEY) == 0)
+      return std_enkf_log_get_clear_log( module_data->std_enkf_log );
     else
       return false;
   }
 }
+
+void * std_enkf_get_ptr( const void * arg , const char * var_name ) {
+  const std_enkf_data_type * module_data = std_enkf_data_safe_cast_const( arg );
+  {
+    if (strcmp(var_name , LOG_FILE_KEY) == 0)
+      return (void *) std_enkf_log_get_log_file( module_data->std_enkf_log );
+    else
+      return NULL;
+  }
+}
+
 
 
 /**
@@ -353,7 +422,7 @@ analysis_table_type LINK_NAME = {
     .set_int         = std_enkf_set_int ,
     .set_double      = std_enkf_set_double ,
     .set_bool        = std_enkf_set_bool,
-    .set_string      = NULL ,
+    .set_string      = std_enkf_set_string,
     .get_options     = std_enkf_get_options ,
     .initX           = std_enkf_initX ,
     .updateA         = NULL,
@@ -363,6 +432,6 @@ analysis_table_type LINK_NAME = {
     .get_int         = std_enkf_get_int,
     .get_double      = std_enkf_get_double,
     .get_bool        = std_enkf_get_bool,
-    .get_ptr         = NULL,
+    .get_ptr         = std_enkf_get_ptr,
 };
 

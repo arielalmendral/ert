@@ -9,6 +9,7 @@ extern "C" {
 
 #include <ert/util/matrix.h>
 #include <ert/util/rng.h>
+#include <ert/analysis/module_info.h>
 
 #define  DEFAULT_ENKF_TRUNCATION_  0.98
 #define  ENKF_TRUNCATION_KEY_      "ENKF_TRUNCATION"
@@ -35,6 +36,7 @@ extern "C" {
   bool   std_enkf_get_bool( const void * arg, const char * var_name);
   int    std_enkf_get_int( const void * arg, const char * var_name);
   double std_enkf_get_double( const void * arg, const char * var_name);
+  void * std_enkf_get_ptr( const void * arg , const char * var_name );
   bool   std_enkf_has_var( const void * arg, const char * var_name);
   long   std_enkf_get_options( void * arg , long flag );
   bool   std_enkf_set_bool( void * arg , const char * var_name , bool value);
@@ -47,7 +49,8 @@ extern "C" {
                         matrix_type * R ,
                         matrix_type * dObs ,
                         matrix_type * E ,
-                        matrix_type * D);
+                        matrix_type * D ,
+                        const module_info_type* module_info);
 
 #ifdef __cplusplus
 }

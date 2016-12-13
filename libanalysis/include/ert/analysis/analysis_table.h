@@ -30,7 +30,8 @@ extern "C" {
                                              matrix_type * R ,
                                              matrix_type * dObs ,
                                              matrix_type * E ,
-                                             matrix_type * D );
+                                             matrix_type * D ,
+                                             const module_info_type* module_info);
 
 
   typedef bool (analysis_set_int_ftype)       (void * module_data , const char * flag , int value);

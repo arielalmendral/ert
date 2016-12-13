@@ -176,7 +176,7 @@ void bootstrap_enkf_updateA(void * module_data ,
             cv_enkf_init_update( bootstrap_data->cv_enkf_data , ens_mask , S_resampled , R , dObs , E , D);
             cv_enkf_initX( bootstrap_data->cv_enkf_data , X , A_resampled , S_resampled , R , dObs , E , D);
           } else
-            std_enkf_initX(bootstrap_data->std_enkf_data , X , NULL , S_resampled,R, dObs, E,D );
+            std_enkf_initX(bootstrap_data->std_enkf_data , X , NULL , S_resampled,R, dObs, E, D, module_info );
 
 
           matrix_inplace_matmul_mt1( A_resampled , X , num_cpu_threads );
