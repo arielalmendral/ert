@@ -111,7 +111,8 @@ void sqrt_enkf_initX(void * module_data ,
                      matrix_type * R , 
                      matrix_type * dObs , 
                      matrix_type * E , 
-                     matrix_type *D ) {
+                     matrix_type *D ,
+                     const module_info_type* module_info) {
 
   sqrt_enkf_data_type * data = sqrt_enkf_data_safe_cast( module_data );
   {

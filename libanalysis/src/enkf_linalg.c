@@ -227,12 +227,12 @@ int enkf_linalg_num_PC(const matrix_type * S , double truncation ) {
  Routine computes X1 and eig corresponding to Eqs 14.54-14.55
  Geir Evensen
 */
-void enkf_linalg_lowrankE(const matrix_type * S , /* (nrobs x nrens) */
-                          const matrix_type * E , /* (nrobs x nrens) */
-                          matrix_type * W       , /* (nrobs x nrmin) Corresponding to X1 from Eqs. 14.54-14.55 */
-                          double * eig          , /* (nrmin)         Corresponding to 1 / (1 + Lambda1^2) (14.54) */
-                          double truncation     ,
-                          int    ncomp) {
+int enkf_linalg_lowrankE(const matrix_type * S , /* (nrobs x nrens) */
+                         const matrix_type * E , /* (nrobs x nrens) */
+                         matrix_type * W       , /* (nrobs x nrmin) Corresponding to X1 from Eqs. 14.54-14.55 */
+                         double * eig          , /* (nrmin)         Corresponding to 1 / (1 + Lambda1^2) (14.54) */
+                         double truncation     ,
+                         int    ncomp) {
 
 
    const int nrobs = matrix_get_rows( S );
@@ -248,10 +248,11 @@ void enkf_linalg_lowrankE(const matrix_type * S , /* (nrobs x nrens) */
    double * sig1      = util_calloc( nrmin , sizeof * sig1);
 
    int i ,j;
+   int num_significant = 0;
 
 
 /* Compute SVD of S=HA`  ->  U0, invsig0=sig0^(-1) */
-   enkf_linalg_svdS(S , truncation , ncomp , DGESVD_NONE , inv_sig0, U0 , NULL);
+   num_significant = enkf_linalg_svdS(S , truncation , ncomp , DGESVD_NONE , inv_sig0, U0 , NULL);
 
 /* X0(nrmin x nrens) =  Sigma0^(+) * U0'* E  (14.51)  */
    matrix_dgemm(X0 , U0 , E  , true  , false , 1.0 , 0.0);  /*  X0 = U0^T * E  (14.51) */
@@ -287,7 +288,7 @@ void enkf_linalg_lowrankE(const matrix_type * S , /* (nrobs x nrens) */
 
    matrix_free( U1 );
    util_safe_free( sig1 );
-
+   return num_significant;
 }
 
 
@@ -324,25 +325,26 @@ void enkf_linalg_Cee(matrix_type * B, int nrens , const matrix_type * R , const 
 
 
 
-void enkf_linalg_lowrankCinv__(const matrix_type * S ,
-                               const matrix_type * R ,
-                               matrix_type * V0T ,
-                               matrix_type * Z,
-                               double * eig ,
-                               matrix_type * U0,
-                               double truncation,
-                               int ncomp) {
+int enkf_linalg_lowrankCinv__(const matrix_type * S ,
+                              const matrix_type * R ,
+                              matrix_type * V0T ,
+                              matrix_type * Z,
+                              double * eig ,
+                              matrix_type * U0,
+                              double truncation,
+                              int ncomp) {
 
   const int nrobs = matrix_get_rows( S );
   const int nrens = matrix_get_columns( S );
   const int nrmin = util_int_min( nrobs , nrens );
+  int num_significant = 0;
 
   double * inv_sig0      = util_calloc( nrmin , sizeof * inv_sig0);
 
   if (V0T != NULL)
-    enkf_linalg_svdS(S , truncation , ncomp , DGESVD_MIN_RETURN , inv_sig0 , U0 , V0T );
+    num_significant = enkf_linalg_svdS(S , truncation , ncomp , DGESVD_MIN_RETURN , inv_sig0 , U0 , V0T );
   else
-    enkf_linalg_svdS(S , truncation , ncomp , DGESVD_NONE , inv_sig0, U0 , NULL);
+    num_significant = enkf_linalg_svdS(S , truncation , ncomp , DGESVD_NONE , inv_sig0, U0 , NULL);
 
   {
     matrix_type * B    = matrix_alloc( nrmin , nrmin );
@@ -363,28 +365,31 @@ void enkf_linalg_lowrankCinv__(const matrix_type * S ,
         matrix_imul(Z , i , j , inv_sig0[i]); /* Z2 =  Sigma0^(+) * Z; */
   }
   util_safe_free( inv_sig0 );
+  return num_significant;
 }
 
 
-void enkf_linalg_lowrankCinv(const matrix_type * S ,
-                             const matrix_type * R ,
-                             matrix_type * W       , /* Corresponding to X1 from Eq. 14.29 */
-                             double * eig          , /* Corresponding to 1 / (1 + Lambda_1) (14.29) */
-                             double truncation     ,
-                             int    ncomp) {
+int enkf_linalg_lowrankCinv(const matrix_type * S ,
+                            const matrix_type * R ,
+                            matrix_type * W       , /* Corresponding to X1 from Eq. 14.29 */
+                            double * eig          , /* Corresponding to 1 / (1 + Lambda_1) (14.29) */
+                            double truncation     ,
+                            int    ncomp) {
 
   const int nrobs = matrix_get_rows( S );
   const int nrens = matrix_get_columns( S );
   const int nrmin = util_int_min( nrobs , nrens );
+  int   num_significant;
 
   matrix_type * U0   = matrix_alloc( nrobs , nrmin );
   matrix_type * Z    = matrix_alloc( nrmin , nrmin );
 
-  enkf_linalg_lowrankCinv__( S , R , NULL , Z , eig , U0 , truncation , ncomp);
+  num_significant = enkf_linalg_lowrankCinv__( S , R , NULL , Z , eig , U0 , truncation , ncomp);
   matrix_matmul(W , U0 , Z); /* X1 = W = U0 * Z2 = U0 * Sigma0^(+') * Z    */
 
   matrix_free( U0 );
   matrix_free( Z  );
+  return num_significant;
 }
 
 

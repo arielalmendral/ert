@@ -19,6 +19,7 @@
 #include <ert/util/rng.h>
 #include <ert/util/matrix.h>
 #include <ert/util/bool_vector.h>
+#include <ert/analysis/module_info.h>
 
 typedef struct cv_enkf_data_struct cv_enkf_data_type;
 
@@ -40,7 +41,8 @@ void cv_enkf_initX(void * module_data ,
                    matrix_type * R , 
                    matrix_type * dObs , 
                    matrix_type * E ,
-                   matrix_type * D);
+                   matrix_type * D ,
+                   const module_info_type* module_info);
 
 bool        cv_enkf_set_double( void * arg , const char * var_name , double value);
 bool        cv_enkf_set_int( void * arg , const char * var_name , int value);

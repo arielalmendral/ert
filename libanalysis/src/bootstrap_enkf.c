@@ -174,7 +174,7 @@ void bootstrap_enkf_updateA(void * module_data ,
           if (bootstrap_data->doCV) {
             const bool_vector_type * ens_mask = NULL;
             cv_enkf_init_update( bootstrap_data->cv_enkf_data , ens_mask , S_resampled , R , dObs , E , D);
-            cv_enkf_initX( bootstrap_data->cv_enkf_data , X , A_resampled , S_resampled , R , dObs , E , D);
+            cv_enkf_initX( bootstrap_data->cv_enkf_data , X , A_resampled , S_resampled , R , dObs , E , D, module_info);
           } else
             std_enkf_initX(bootstrap_data->std_enkf_data , X , NULL , S_resampled,R, dObs, E, D, module_info );
 

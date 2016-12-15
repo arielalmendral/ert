@@ -151,26 +151,35 @@ void std_enkf_data_free( void * data ) {
 
 
 
-static void std_enkf_write_info( std_enkf_data_type * std_enkf_data, const char * ministep_name, const int nrobs, const int ens_size, const int ncomp, const double truncation, const double* eig) {
+static void std_enkf_write_info( std_enkf_data_type * std_enkf_data, const char * ministep_name, const int nrobs, const int ens_size, const int ncomp, const double truncation, const int num_significant, const double* eig) {
 
   int nrmin         = util_int_min( ens_size , nrobs);
   if (std_enkf_log_is_open( std_enkf_data->std_enkf_log )) {
     std_enkf_log_line(std_enkf_data->std_enkf_log, "===============================================================================================================================\n");
-    std_enkf_log_line(std_enkf_data->std_enkf_log, "Ministep                    : %s\n",ministep_name);
-    std_enkf_log_line(std_enkf_data->std_enkf_log, "Total number of observations: %d\n",nrobs);
-    std_enkf_log_line(std_enkf_data->std_enkf_log, "Number of ensembles         : %d\n",ens_size);
-    std_enkf_log_line(std_enkf_data->std_enkf_log, "Number of components        : %d\n",ncomp);
-    std_enkf_log_line(std_enkf_data->std_enkf_log, "Truncation                  : %f\n",truncation);
-    std_enkf_log_line(std_enkf_data->std_enkf_log, "===============================================================================================================================\n");
+    std_enkf_log_line(std_enkf_data->std_enkf_log, "Ministep                         : %s\n",ministep_name);
+    std_enkf_log_line(std_enkf_data->std_enkf_log, "Total number of observations     : %d\n",nrobs);
+    std_enkf_log_line(std_enkf_data->std_enkf_log, "Number of ensembles              : %d\n",ens_size);
+    std_enkf_log_line(std_enkf_data->std_enkf_log, "Number of components             : %d\n",ncomp);
+    std_enkf_log_line(std_enkf_data->std_enkf_log, "Truncation                       : %f\n",truncation);
+    std_enkf_log_line(std_enkf_data->std_enkf_log, "Number of significant components : %d\n",num_significant);
     std_enkf_log_line(std_enkf_data->std_enkf_log, "Eigenvalues :\n");
+    for (int i = 0; i < nrmin; ++i){
+      std_enkf_log_line(std_enkf_data->std_enkf_log, "%f\n", eig[i]);
+    }
+    std_enkf_log_line(std_enkf_data->std_enkf_log, "===============================================================================================================================\n");
   }
 
   printf("===============================================================================================================================\n");
-  printf("Ministep                    : %s\n",ministep_name);
-  printf("Total number of observations: %d\n",nrobs);
-  printf("Number of ensembles         : %d\n",ens_size);
-  printf("Number of components        : %d\n",ncomp);
-  printf("Truncation                  : %f\n",truncation);
+  printf("Ministep                                : %s\n",ministep_name);
+  printf("Total number of observations            : %d\n",nrobs);
+  printf("Number of ensembles                     : %d\n",ens_size);
+  printf("Number of components                    : %d\n",ncomp);
+  printf("Truncation                              : %f\n",truncation);
+  printf("Number of significant components        : %d\n",num_significant);
+  printf("Eigenvalues                             : ");
+  for (int i = 0; i < nrmin; ++i){
+      printf("%f\n", eig[i]);
+  }
   printf("===============================================================================================================================\n");
 }
 
@@ -194,6 +203,7 @@ static void std_enkf_initX__( matrix_type * X ,
   int nrobs         = matrix_get_rows( S );
   int ens_size      = matrix_get_columns( S );
   int nrmin         = util_int_min( ens_size , nrobs);
+  int num_significant = 0;
 
   matrix_type * W   = matrix_alloc(nrobs , nrmin);
   double      * eig = util_calloc( nrmin , sizeof * eig);
@@ -202,14 +212,14 @@ static void std_enkf_initX__( matrix_type * X ,
 
   if (use_EE) {
      if (use_GE) {
-       enkf_linalg_lowrankE( S , E , W , eig , truncation , ncomp);
+       num_significant = enkf_linalg_lowrankE( S , E , W , eig , truncation , ncomp);
      }
      else {
        matrix_type * Et = matrix_alloc_transpose( E );
        matrix_type * Cee = matrix_alloc_matmul( E , Et );
        matrix_scale( Cee , 1.0 / (ens_size - 1));
 
-       enkf_linalg_lowrankCinv( S , Cee , W , eig , truncation , ncomp);
+       num_significant = enkf_linalg_lowrankCinv( S , Cee , W , eig , truncation , ncomp);
 
        matrix_free( Et );
        matrix_free( Cee );
@@ -217,14 +227,14 @@ static void std_enkf_initX__( matrix_type * X ,
 
   }
   else {
-    enkf_linalg_lowrankCinv( S , R , W , eig , truncation , ncomp);
+    num_significant = enkf_linalg_lowrankCinv( S , R , W , eig , truncation , ncomp);
   }
 
   enkf_linalg_init_stdX( X , S , D , W , eig , bootstrap);
 
   if (module_info != NULL){
     char * ministep_name = module_info_get_ministep_name(module_info);
-    std_enkf_write_info(std_enkf_data, ministep_name, nrobs, ens_size, ncomp, truncation, eig);
+    std_enkf_write_info(std_enkf_data, ministep_name, nrobs, ens_size, ncomp, truncation, num_significant, eig);
   }
 
   matrix_free( W );
