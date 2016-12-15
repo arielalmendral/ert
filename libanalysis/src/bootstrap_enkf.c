@@ -220,7 +220,6 @@ bool bootstrap_enkf_set_double( void * arg , const char * var_name , double valu
   }
 }
 
-
 bool bootstrap_enkf_set_int( void * arg , const char * var_name , int value) {
   bootstrap_enkf_data_type * bootstrap_data = bootstrap_enkf_data_safe_cast( arg );
   {
@@ -240,6 +239,8 @@ bool bootstrap_enkf_set_bool( void * arg , const char * var_name , bool value) {
 
     if (strcmp( var_name , "CV" ) == 0)
       bootstrap_data->doCV = value;
+    else if (std_enkf_set_bool( bootstrap_data->std_enkf_data , var_name , value ))
+      return true;
     else
       name_recognized = false;
 
@@ -247,6 +248,17 @@ bool bootstrap_enkf_set_bool( void * arg , const char * var_name , bool value) {
   }
 }
 
+
+bool bootstrap_enkf_set_string( void * arg , const char * var_name , const char * value) {
+   bootstrap_enkf_data_type * bootstrap_data = bootstrap_enkf_data_safe_cast( arg ); 
+   {
+     if (std_enkf_set_string( bootstrap_data->std_enkf_data , var_name , value ))
+       return true;
+     else {
+       return false;
+     }
+   }
+}
 
 bool bootstrap_enkf_has_var( const void * arg, const char * var_name) {
     const bootstrap_enkf_data_type * module_data = bootstrap_enkf_data_safe_cast_const( arg );
@@ -269,7 +281,19 @@ int bootstrap_enkf_get_int( const void * arg, const char * var_name) {
     }
 }
 
+bool bootstrap_enkf_get_bool( const void * arg, const char * var_name) {
+  const bootstrap_enkf_data_type * module_data = bootstrap_enkf_data_safe_cast_const( arg );
+  {
+    return std_enkf_get_bool( module_data->std_enkf_data , var_name);
+  }
+}
 
+void * bootstrap_enkf_get_ptr( const void * arg, const char * var_name) {
+  const bootstrap_enkf_data_type * module_data = bootstrap_enkf_data_safe_cast_const( arg );
+  {
+    return std_enkf_get_ptr( module_data->std_enkf_data , var_name);
+  }
+}
 
 
 #ifdef INTERNAL_LINK
@@ -286,7 +310,7 @@ analysis_table_type LINK_NAME = {
   .set_int         = bootstrap_enkf_set_int ,
   .set_double      = bootstrap_enkf_set_double ,
   .set_bool        = bootstrap_enkf_set_bool ,
-  .set_string      = NULL ,
+  .set_string      = bootstrap_enkf_set_string ,
   .get_options     = bootstrap_enkf_get_options ,
   .initX           = NULL,
   .updateA         = bootstrap_enkf_updateA,
@@ -295,6 +319,6 @@ analysis_table_type LINK_NAME = {
   .has_var         = bootstrap_enkf_has_var,
   .get_int         = bootstrap_enkf_get_int,
   .get_double      = bootstrap_enkf_get_double,
-  .get_bool        = NULL,
-  .get_ptr         = NULL,
+  .get_bool        = bootstrap_enkf_get_bool,
+  .get_ptr         = bootstrap_enkf_get_ptr,
 };

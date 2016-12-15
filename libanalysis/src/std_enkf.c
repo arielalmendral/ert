@@ -55,8 +55,7 @@
 #define DEFAULT_USE_EE              false
 #define DEFAULT_USE_GE              false
 #define DEFAULT_ANALYSIS_SCALE_DATA true
-#define LOG_FILE_KEY                "LOG_FILE"
-#define CLEAR_LOG_KEY               "CLEAR_LOG"
+
 
 
 
@@ -176,7 +175,7 @@ static void std_enkf_write_info( std_enkf_data_type * std_enkf_data, const char 
   printf("Number of components                    : %d\n",ncomp);
   printf("Truncation                              : %f\n",truncation);
   printf("Number of significant components        : %d\n",num_significant);
-  printf("Eigenvalues                             : ");
+  printf("Eigenvalues                             : \n");
   for (int i = 0; i < nrmin; ++i){
       printf("%f\n", eig[i]);
   }
@@ -313,7 +312,7 @@ bool std_enkf_set_bool( void * arg , const char * var_name , bool value) {
       module_data->use_GE = value;
     else if (strcmp( var_name , ANALYSIS_SCALE_DATA_KEY_) == 0)
       module_data->analysis_scale_data = value;
-    else if (strcmp( var_name , CLEAR_LOG_KEY) == 0)
+    else if (strcmp( var_name , CLEAR_LOG_KEY_) == 0)
       std_enkf_log_set_clear_log( module_data->std_enkf_log , value );
     else
       name_recognized = false;
@@ -327,7 +326,7 @@ bool std_enkf_set_string( void * arg , const char * var_name , const char * valu
   {
     bool name_recognized = true;
 
-    if (strcmp( var_name , LOG_FILE_KEY) == 0)
+    if (strcmp( var_name , LOG_FILE_KEY_) == 0)
       std_enkf_log_set_log_file( module_data->std_enkf_log , value );
     else
       name_recognized = false;
@@ -354,9 +353,9 @@ bool std_enkf_has_var( const void * arg, const char * var_name) {
       return true;
     else if (strcmp(var_name , ANALYSIS_SCALE_DATA_KEY_) == 0)
       return true;
-    else if (strcmp(var_name , LOG_FILE_KEY) == 0)
+    else if (strcmp(var_name , LOG_FILE_KEY_) == 0)
       return true;
-    else if (strcmp(var_name , CLEAR_LOG_KEY) == 0)
+    else if (strcmp(var_name , CLEAR_LOG_KEY_) == 0)
       return true;
     else
       return false;
@@ -393,7 +392,7 @@ bool std_enkf_get_bool( const void * arg, const char * var_name) {
       return module_data->use_GE;
     else if (strcmp(var_name , ANALYSIS_SCALE_DATA_KEY_) == 0)
       return module_data->analysis_scale_data;
-    else if (strcmp(var_name , CLEAR_LOG_KEY) == 0)
+    else if (strcmp(var_name , CLEAR_LOG_KEY_) == 0)
       return std_enkf_log_get_clear_log( module_data->std_enkf_log );
     else
       return false;
@@ -403,7 +402,7 @@ bool std_enkf_get_bool( const void * arg, const char * var_name) {
 void * std_enkf_get_ptr( const void * arg , const char * var_name ) {
   const std_enkf_data_type * module_data = std_enkf_data_safe_cast_const( arg );
   {
-    if (strcmp(var_name , LOG_FILE_KEY) == 0)
+    if (strcmp(var_name , LOG_FILE_KEY_) == 0)
       return (void *) std_enkf_log_get_log_file( module_data->std_enkf_log );
     else
       return NULL;

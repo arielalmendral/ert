@@ -39,7 +39,7 @@ class AnalysisModule(BaseCClass):
     _get_str             = AnalysisPrototype("char* analysis_module_get_ptr(analysis_module, char*)")
     _init_update         = AnalysisPrototype("void analysis_module_init_update(analysis_module, bool_vector , matrix , matrix , matrix , matrix, matrix)")
     _updateA             = AnalysisPrototype("void analysis_module_updateA(analysis_module, matrix , matrix ,  matrix , matrix, matrix, matrix, void*)")
-    _initX               = AnalysisPrototype("void analysis_module_initX(analysis_module, matrix , matrix , matrix , matrix , matrix, matrix, matrix)")
+    _initX               = AnalysisPrototype("void analysis_module_initX(analysis_module, matrix , matrix , matrix , matrix , matrix, matrix, matrix, void*)")
 
 
     # The VARIABLE_NAMES field is a completly broken special case
@@ -184,5 +184,5 @@ class AnalysisModule(BaseCClass):
         
     def initX(self, A, S, R, dObs, E, D):
         X = Matrix( A.columns() , A.columns())
-        self._initX(X, A, S, R, dObs, E, D)
+        self._initX(X, A, S, R, dObs, E, D, None)
         return X

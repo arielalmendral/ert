@@ -100,9 +100,29 @@ bool sqrt_enkf_set_int( void * arg , const char * var_name , int value) {
   }
 }
 
+bool sqrt_enkf_set_bool( void * arg , const char * var_name , bool value) {
+  sqrt_enkf_data_type * sqrt_data = sqrt_enkf_data_safe_cast( arg );
+  {
+    bool name_recognized = true;
+    if (std_enkf_set_bool( sqrt_data->std_data , var_name , value ))
+      return true;
+    else
+      name_recognized = false;
 
+    return name_recognized;
+  }
+}
 
-
+bool sqrt_enkf_set_string( void * arg , const char * var_name , const char * value) {
+   sqrt_enkf_data_type * sqrt_data = sqrt_enkf_data_safe_cast( arg ); 
+   {
+     if (std_enkf_set_string( sqrt_data->std_data , var_name , value ))
+       return true;
+     else {
+       return false;
+     }
+   }
+}
 
 void sqrt_enkf_initX(void * module_data , 
                      matrix_type * X , 
@@ -190,6 +210,19 @@ int sqrt_enkf_get_int( const void * arg, const char * var_name) {
     }
 }
 
+bool sqrt_enkf_get_bool( const void * arg, const char * var_name) {
+  const sqrt_enkf_data_type * module_data = sqrt_enkf_data_safe_cast_const( arg );
+  {
+    return std_enkf_get_bool( module_data->std_data , var_name);
+  }
+}
+
+void * sqrt_enkf_get_ptr( const void * arg, const char * var_name) {
+  const sqrt_enkf_data_type * module_data = sqrt_enkf_data_safe_cast_const( arg );
+  {
+    return std_enkf_get_ptr( module_data->std_data , var_name);
+  }
+}
 
 
 /*****************************************************************/
@@ -208,8 +241,8 @@ analysis_table_type LINK_NAME = {
   .freef           = sqrt_enkf_data_free,
   .set_int         = sqrt_enkf_set_int , 
   .set_double      = sqrt_enkf_set_double , 
-  .set_bool        = NULL , 
-  .set_string      = NULL , 
+  .set_bool        = sqrt_enkf_set_bool , 
+  .set_string      = sqrt_enkf_set_string , 
   .initX           = sqrt_enkf_initX , 
   .updateA         = NULL,
   .init_update     = sqrt_enkf_init_update,
@@ -218,7 +251,7 @@ analysis_table_type LINK_NAME = {
   .has_var         = sqrt_enkf_has_var,
   .get_int         = sqrt_enkf_get_int,
   .get_double      = sqrt_enkf_get_double,
-  .get_bool        = NULL,
-  .get_ptr         = NULL
+  .get_bool        = sqrt_enkf_get_bool,
+  .get_ptr         = sqrt_enkf_get_ptr,
 };
 

@@ -17,6 +17,8 @@ extern "C" {
 #define  USE_EE_KEY_               "USE_EE"
 #define  USE_GE_KEY_               "USE_GE"
 #define  ANALYSIS_SCALE_DATA_KEY_  "ANALYSIS_SCALE_DATA"
+#define  LOG_FILE_KEY_             "LOG_FILE"
+#define  CLEAR_LOG_KEY_            "CLEAR_LOG"
 
   typedef struct std_enkf_data_struct std_enkf_data_type;
 
@@ -42,6 +44,7 @@ extern "C" {
   bool   std_enkf_set_bool( void * arg , const char * var_name , bool value);
   bool   std_enkf_set_int( void * arg , const char * var_name , int value);
   bool   std_enkf_set_double( void * arg , const char * var_name , double value);
+  bool   std_enkf_set_string( void * arg , const char * var_name , const char * value);
   void   std_enkf_initX(void * module_data ,
                         matrix_type * X ,
                         matrix_type * A ,
